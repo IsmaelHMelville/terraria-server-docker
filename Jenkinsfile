@@ -67,24 +67,19 @@ pipeline {
           echo "========== ${env.STAGE_NAME} =========="
           echo "buildVersion=${buildVersion}"
 
-          // We want the latest available version
           if (buildVersion == 'latest') {
-            def latestVersion = sh(script: "python3 ${WORKSPACE}/scripts/get_latest_version.py | tail -n 1", returnStdout: true).trim()
+            def latestVersion = sh(script: "python3 ${WORKSPACE}/scripts/get_latest_version.py", returnStdout: true).trim()
 
-            // If the script fails
             if (latestVersion.isEmpty()) {
               error("Error: Failed to get latest version.")
-            // Script worked, we have the latestVersion
             } else {
               echo "latestVersion: ${latestVersion}"
-              // Convert "1452" to "1.4.5.2" by adding dots between each character
               versionTag = latestVersion.toList().join('.')
               echo "versionTag: ${versionTag}"
             }
           }
           // We are building a specific version specified by 'manualBuildVersion'
           else {
-            // Convert "1452" to "1.4.5.2" by adding dots between each character
             versionTag = env.buildVersion.toList().join('.')
             echo "buildVersion=${buildVersion}, versionTag=${versionTag}"
           }
@@ -97,36 +92,33 @@ pipeline {
       }
     }
 
-    stage('Check if Image Exists') {
-      steps {
-        script {
-          echo "========== ${env.STAGE_NAME} =========="
+    // stage('Check if Image Exists') {
+    //   steps {
+    //     script {
+    //       echo "========== ${env.STAGE_NAME} =========="
 
-          // Check if the manifest already exists on Docker Hub
-          def imageExists = sh(
-            script: "./regctl image manifest ${dockerhubRegistry}:${versionTag} 2>/dev/null",
-            returnStatus: true
-          ) == 0
+    //       // Check if the manifest already exists on Docker Hub
+    //       def imageExists = sh(
+    //         script: "./regctl image manifest ${dockerhubRegistry}:${versionTag} 2>/dev/null",
+    //         returnStatus: true
+    //       ) == 0
 
-          if (imageExists) {
-            echo "========================================================================================"
-            echo "✓ Image ${dockerhubRegistry}:${versionTag} already exists, skipping build and deployment"
-            echo "========================================================================================"
-            env.SKIP_BUILD = 'true'
-          } else {
-            echo "================================================================================"
-            echo "✗ Image ${dockerhubRegistry}:${versionTag} does not exist, proceeding with build"
-            echo "================================================================================"
-            env.SKIP_BUILD = 'false'
-          }
-        }
-      }
-    }
+    //       if (imageExists) {
+    //         echo "========================================================================================"
+    //         echo "✓ Image ${dockerhubRegistry}:${versionTag} already exists, skipping build and deployment"
+    //         echo "========================================================================================"
+    //         env.SKIP_BUILD = 'true'
+    //       } else {
+    //         echo "================================================================================"
+    //         echo "✗ Image ${dockerhubRegistry}:${versionTag} does not exist, proceeding with build"
+    //         echo "================================================================================"
+    //         env.SKIP_BUILD = 'false'
+    //       }
+    //     }
+    //   }
+    // }
 
     stage('Creating buildx builder') {
-      when {
-        expression { env.SKIP_BUILD == 'false' }
-      }
       steps {
         script {
           echo "========== ${env.STAGE_NAME} =========="
@@ -150,39 +142,101 @@ pipeline {
 
           sh "docker buildx use multiarch"
           sh "docker buildx build --build-arg VERSION=${env.buildVersion} --builder multiarch --target build-${arch} --no-cache --progress plain --platform linux/${arch} -t ${dockerhubRegistry}-${arch}:latest --load ."
-          sh "docker buildx build --build-arg VERSION=${env.buildVersion} --builder multiarch --target build-${arch} --no-cache --progress plain --platform linux/${arch} -t ${dockerhubRegistry}-${arch}:${versionTag} --load ."
+          sh "./regctl image copy ${dockerhubRegistry}-${arch}:latest ${dockerhubRegistry}-${arch}:${versionTag}"
+          // sh "docker buildx build --build-arg VERSION=${env.buildVersion} --builder multiarch --target build-${arch} --no-cache --progress plain --platform linux/${arch} -t ${dockerhubRegistry}-${arch}:${versionTag} --load ."
 
           arch='arm64'
           echo "========== Building ${dockerhubRegistry}-${arch} =========="
 
           sh "docker buildx build --build-arg VERSION=${env.buildVersion} --builder multiarch --target build-${arch} --no-cache --progress plain --platform linux/${arch} -t ${dockerhubRegistry}-${arch}:latest --load ."
-          sh "docker buildx build --build-arg VERSION=${env.buildVersion} --builder multiarch --target build-${arch} --no-cache --progress plain --platform linux/${arch} -t ${dockerhubRegistry}-${arch}:${versionTag} --load ."
+          // sh "docker buildx build --build-arg VERSION=${env.buildVersion} --builder multiarch --target build-${arch} --no-cache --progress plain --platform linux/${arch} -t ${dockerhubRegistry}-${arch}:${versionTag} --load ."
+          sh "./regctl image copy ${dockerhubRegistry}-${arch}:latest ${dockerhubRegistry}-${arch}:${versionTag}"
+        }
+      }
+    }
+
+    stage('Compare Local Images to Docker Hub') {
+      steps {
+        script {
+          echo "========== ${env.STAGE_NAME} =========="
+          arch='amd64' // We only need to compare 1 architecture
+          echo "========== Comparing ${dockerhubRegistry}-${arch}:latest =========="
+          
+          
+          def localLatestImageDigest = sh(
+            script: "docker image inspect ${dockerhubRegistry}-${arch}:latest --format {{.Descriptor.digest}} 2>/dev/null",
+            returnStatus: true
+          )
+          echo "localLatestImageDigest: ${localLatestImageDigest}"
+
+          def remoteLatestImageDigest = sh(
+            script: "./regctl image digest ${dockerhubRegistry}-${arch}:latest 2>/dev/null",
+            returnStatus: true
+          )
+          echo "remoteLatestImageDigest: ${remoteLatestImageDigest}"
+
+          def latestExists = localLatestImageDigest == remoteLatestImageDigest
+          echo "latestExists: ${latestExists}"
+
+          echo "========== Comparing ${dockerhubRegistry}-${arch}:${versionTag} =========="
+
+          def localVersionTagImageDigest = sh(
+            script: "docker image inspect ${dockerhubRegistry}-${arch}:${versionTag} --format {{.Descriptor.digest}} 2>/dev/null",
+            returnStatus: true
+          )
+          echo "localVersionTagImageDigest: ${localVersionTagImageDigest}"
+
+          def remoteVersionTagImageDigest = sh(
+            script: "./regctl image digest ${dockerhubRegistry}-${arch}:${versionTag} 2>/dev/null",
+            returnStatus: true
+          )
+          echo "remoteVersionTagImageDigest: ${remoteVersionTagImageDigest}"
+
+          def versionTagExists = localVersionTagImageDigest == remoteVersionTagImageDigest
+          echo "versionTagExists: ${versionTagExists}"
+
+          if (latestExists && versionTagExists) {
+            env.SKIP_DEPLOY = 'true'
+          } else {
+            env.SKIP_DEPLOY = 'false'
+          }
         }
       }
     }
 
     stage('Deploy Images to Dockerhub') {
       when {
-        expression { env.SKIP_BUILD == 'false' }
+        expression { env.SKIP_DEPLOY == 'false' }
       }
       steps{
         script {
           echo "========== ${env.STAGE_NAME} =========="
           docker.withRegistry( '', "${dockerhubCredentials}" ) {
             // Push individual images for them to be available to the manifest
-            sh "docker push ${dockerhubRegistry}-amd64:latest"
-            sh "docker push ${dockerhubRegistry}-arm64:latest"
+            if (!latestExists) {
+              sh "docker push ${dockerhubRegistry}-amd64:latest"
+              sh "docker push ${dockerhubRegistry}-arm64:latest"
 
-            sh "docker push ${dockerhubRegistry}-amd64:${versionTag}"
-            sh "docker push ${dockerhubRegistry}-arm64:${versionTag}"
+              echo "creating manifest"
 
-            echo "creating manifest"
+              sh "docker manifest create --amend ${dockerhubRegistry}:latest ${dockerhubRegistry}-amd64:latest ${dockerhubRegistry}-arm64:latest"
+              sh "docker manifest push ${dockerhubRegistry}:latest"
+            } else {
+              echo "Skipping 'latest' push"
+            }
+            
+            if (!versionTagExists) {
+              sh "docker push ${dockerhubRegistry}-amd64:${versionTag}"
+              sh "docker push ${dockerhubRegistry}-arm64:${versionTag}"
 
-            sh "docker manifest create --amend ${dockerhubRegistry}:latest ${dockerhubRegistry}-amd64:latest ${dockerhubRegistry}-arm64:latest"
-            sh "docker manifest push ${dockerhubRegistry}:latest"
+              echo "creating manifest"
 
-            sh "docker manifest create --amend ${dockerhubRegistry}:${versionTag} ${dockerhubRegistry}-amd64:${versionTag} ${dockerhubRegistry}-arm64:${versionTag}"
-            sh "docker manifest push ${dockerhubRegistry}:${versionTag}"
+              sh "docker manifest create --amend ${dockerhubRegistry}:${versionTag} ${dockerhubRegistry}-amd64:${versionTag} ${dockerhubRegistry}-arm64:${versionTag}"
+              sh "docker manifest push ${dockerhubRegistry}:${versionTag}"
+            } else {
+              echo "Skipping '${versionTag}' push"
+            }
+            
           }
         }
       }
@@ -190,13 +244,19 @@ pipeline {
 
     stage('Copying Images to ghcr.io') {
       when {
-        expression { env.SKIP_BUILD == 'false' }
+        expression { env.SKIP_DEPLOY == 'false' }
       }
       steps {
         script {
           echo "========== ${env.STAGE_NAME} =========="
-          sh "./regctl image copy ${dockerhubRegistry}:latest ${githubRegistry}:latest"
-          sh "./regctl image copy ${dockerhubRegistry}:${versionTag} ${githubRegistry}:${versionTag}"
+          if (!latestExists) {
+            sh "./regctl image copy ${dockerhubRegistry}:latest ${githubRegistry}:latest"
+          }
+          
+          if (!versionTagExists) {
+            sh "./regctl image copy ${dockerhubRegistry}:${versionTag} ${githubRegistry}:${versionTag}"
+          }
+          
         }
       }
     }

@@ -5,7 +5,7 @@ import os
 import sys
 import shutil
 
-import get_latest_filename
+import get_latest_version
 
 
 def download_server(version, dir_path=""):
@@ -15,7 +15,7 @@ def download_server(version, dir_path=""):
     match version:
         case "latest":
             print("Getting latest filename...")
-            filename = get_latest_filename.get_latest_filename()
+            filename = get_latest_version.get_latest_filename()
         
         case _:
             print("Using Custom Version")

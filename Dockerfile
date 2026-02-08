@@ -18,7 +18,7 @@ RUN chmod +x \
     init-TerrariaServer-arm64.sh \
     download_server.py \
     prune_unused_files.py \
-    get_latest_filename.py \
+    get_latest_by_iteration.py \
     get_latest_version.py
     
 RUN apt-get update -qq && apt-get -qq install python3
