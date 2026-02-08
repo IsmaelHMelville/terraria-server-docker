@@ -1,6 +1,5 @@
 import urllib.request
 import json
-import re
 
 def get_latest_filename():
     try:
@@ -26,11 +25,13 @@ def filename_to_version(filename):
     if not isinstance(filename, str):
         raise TypeError("Filename must be a string")
     version = filename.split('terraria-server-')[1].split('.zip')[0]
-    assert version.isdigit(), "Version must be a number. \n version: " + version + ". \n filename: " + filename + ". \n Check input string format."
-    version = version.zfill(4)
-    assert len(version) == 4, "Version must be 4 digits. version: " + version + ". \n filename: " + filename + ". \n Check input string format."
     return version
+
 
 if __name__ == "__main__":
     filename = get_latest_filename()
-    print(filename_to_version(filename))
+    if filename:
+        version = filename_to_version(filename)
+        print(version)
+    else:
+        print("No filename found")

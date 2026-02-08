@@ -16,6 +16,14 @@ def download_server(version, dir_path=""):
         case "latest":
             print("Getting latest filename...")
             filename = get_latest_version.get_latest_filename()
+            if not filename:
+                print("No filename found")
+                sys.exit(1)
+            print("Latest filename:", filename)
+            version = get_latest_version.filename_to_version(filename)
+            assert version.isdigit(), "Version must be a number"
+            assert len(version) == 4, "Version must be 4 digits"
+            print("Latest version:", version)
         
         case _:
             print("Using Custom Version")

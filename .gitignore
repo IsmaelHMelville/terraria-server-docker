@@ -6,6 +6,7 @@ terraria-server.zip
 terraria-server/
 docker-compose.yml
 Server*
+out/
 
 Worlds/*
 !Worlds/.gitkeep
