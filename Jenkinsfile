@@ -61,7 +61,7 @@ pipeline {
       steps {
         script {
           echo "========== ${env.STAGE_NAME} =========="
-          sh "python3 tests/test_get_latest_version.py -v"
+          sh "python3 tests/test_get_latest_by_iteration.py -v"
         }
       }
     }
