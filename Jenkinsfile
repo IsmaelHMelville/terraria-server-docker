@@ -151,15 +151,8 @@ pipeline {
       steps {
         script {
           echo "========== ${env.STAGE_NAME} =========="
-          if (!latestExists) {
-            sh "./regctl image copy ${dockerhubRegistry}:latest ${githubRegistry}:latest"
-          }
-          
-          if (!versionTagExists) {
-            sh "./regctl image copy ${dockerhubRegistry}:${versionTag} ${githubRegistry}:${versionTag}"
-          }
-          
-        }
+          sh "./regctl image copy ${dockerhubRegistry}:latest ${githubRegistry}:latest"
+          sh "./regctl image copy ${dockerhubRegistry}:${versionTag} ${githubRegistry}:${versionTag}"
       }
     }
   }
