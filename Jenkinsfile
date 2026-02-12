@@ -151,8 +151,11 @@ pipeline {
       steps {
         script {
           echo "========== ${env.STAGE_NAME} =========="
-          sh "./regctl image copy ${dockerhubRegistry}:latest ${githubRegistry}:latest"
-          sh "./regctl image copy ${dockerhubRegistry}:${versionTag} ${githubRegistry}:${versionTag}"
+          withCredentials([string(credentialsId: 'f1ed1fe0-50bf-4256-9d08-029f48737802', variable: 'TOKEN')]) {
+            sh "./regctl image copy ${dockerhubRegistry}:latest ${githubRegistry}:latest" 
+            sh "./regctl image copy ${dockerhubRegistry}:${versionTag} ${githubRegistry}:${versionTag}"
+          } 
+        }
       }
     }
   }
